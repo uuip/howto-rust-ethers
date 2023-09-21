@@ -1,3 +1,3 @@
-* How to use pulsar send and receive message.
-* How to use async-channel as async task queue.
-* How to use ethers send_raw_transaction. 
+* How to use ethers send_raw_transaction.
+  https://github.com/uuip/pulsar_ethers/blob/main/src/action.rs line:72
+* parse log, decode_input in this repo
