@@ -69,6 +69,7 @@ async fn main() -> anyhow::Result<()> {
         TerminalMode::Mixed,
         ColorChoice::Auto,
     )?;
+    let _=rust_file_generation();
 
     let w3: Arc<Provider<Http>> = Arc::new(Provider::<Http>::try_from(&SETTING.rpc)?);
     let c = Erc20Token::new(SETTING.token.parse::<Address>()?, w3.clone());
@@ -171,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
 
 fn rust_file_generation() -> Result<(), Box<dyn std::error::Error>> {
     let out_file = std::env::temp_dir().join("erc20.rs");
-    debug!("{:?}", out_file);
+    debug!("{:#?}", out_file.as_os_str());
     if out_file.exists() {
         std::fs::remove_file(&out_file)?;
     }
