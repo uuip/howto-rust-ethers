@@ -10,14 +10,13 @@ use ethers::abi::{Abi, Detokenize, InvalidOutputType, RawLog, Token};
 use ethers::prelude::*;
 use log::{debug, info, LevelFilter};
 use once_cell::sync::{Lazy, OnceCell};
-use simplelog::{ColorChoice, ConfigBuilder, TerminalMode, TermLogger};
+use simplelog::{ColorChoice, ConfigBuilder, TermLogger, TerminalMode};
 
 use crate::setting::Setting;
 use erc20::*;
 
-mod error;
-mod setting;
 mod erc20;
+mod setting;
 
 static CHAIN_ID: OnceCell<U256> = OnceCell::new();
 static SETTING: Lazy<Setting, fn() -> Setting> = Lazy::new(Setting::init);
@@ -92,10 +91,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let decode_data = async {
-        let tx = w3
-            .get_transaction(transaction_hash)
-            .await?
-            .unwrap();
+        let tx = w3.get_transaction(transaction_hash).await?.unwrap();
         let decode_input = c.decode_input::<Input, Bytes>(tx.input)?;
         info!("decode_data {:?}", decode_input);
         Ok::<(), anyhow::Error>(())
@@ -103,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
 
     let read_function = async {
         let aa = c
-            .balance_of("0x44ea38b427fce87147dc034caae56f4a46cdfe98".parse::<H160>()?)
+            .balance_of("0x44ea38b427fce87147dc034caae56f4a46cdfe98".parse::<Address>()?)
             .call()
             .await?;
         info!("read_function {:?}", aa);

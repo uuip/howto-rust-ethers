@@ -21,6 +21,3 @@ tokio = { version = "1", features = ["full"] }
 futures = "0"
 
 ethers = { version = "2", features = ["legacy"] }
-
-uint = "0"
-rustc-hex = "2"
