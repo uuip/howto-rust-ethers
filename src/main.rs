@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::sync::Arc;
 
-use ethers::abi::{Abi, Detokenize, InvalidOutputType, RawLog, Token};
+use ethers::abi::{Abi, Detokenize, InvalidOutputType, RawLog, Token, AbiEncode};
 use ethers::prelude::*;
 use log::{debug, info, LevelFilter};
 use once_cell::sync::{Lazy, OnceCell};
@@ -69,8 +69,8 @@ async fn main() -> anyhow::Result<()> {
         TerminalMode::Mixed,
         ColorChoice::Auto,
     )?;
-    let _=rust_file_generation();
-
+    let _ = rust_file_generation();
+    
     let w3: Arc<Provider<Http>> = Arc::new(Provider::<Http>::try_from(&SETTING.rpc)?);
     let c = Erc20Token::new(SETTING.token.parse::<Address>()?, w3.clone());
     let transaction_hash: TxHash =
@@ -118,6 +118,8 @@ async fn main() -> anyhow::Result<()> {
         topic
     };
 
+    let construct_topic2 = TokenTransferFilter::signature();
+    
     let logs = async {
         let start = 594933_u64;
         let filter = Filter::new()
@@ -149,6 +151,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let topic = construct_topic.await;
+    
+    assert_eq!(topic, construct_topic2);
+    println!("{}", topic);
     for log in tx_receipt.logs.into_iter() {
         let _ = process_log(topic, log).await;
     }
