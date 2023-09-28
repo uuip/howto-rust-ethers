@@ -6,9 +6,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::sync::Arc;
 
-use ethers::abi::{Abi, Detokenize, InvalidOutputType, RawLog, Token, AbiEncode};
+use ethers::abi::{Abi, AbiDecode, AbiEncode, Detokenize, InvalidOutputType, RawLog, Token};
 use ethers::prelude::*;
-use log::{debug, info, LevelFilter};
+use log::{debug, info, warn, LevelFilter};
 use once_cell::sync::{Lazy, OnceCell};
 use simplelog::{ColorChoice, ConfigBuilder, TermLogger, TerminalMode};
 
@@ -64,17 +64,22 @@ impl Display for FixedH256 {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     TermLogger::init(
-        LevelFilter::Debug,
+        LevelFilter::Warn,
         ConfigBuilder::new().build(),
         TerminalMode::Mixed,
         ColorChoice::Auto,
     )?;
     let _ = rust_file_generation();
-    
+
     let w3: Arc<Provider<Http>> = Arc::new(Provider::<Http>::try_from(&SETTING.rpc)?);
-    let c = Erc20Token::new(SETTING.token.parse::<Address>()?, w3.clone());
+    let c: Erc20Token<Provider<Http>> =
+        Erc20Token::new(SETTING.token.parse::<Address>()?, w3.clone());
     let transaction_hash: TxHash =
         "0x079b409e03acb6b2f9985032de5325aaef242336c3eef2f007c32102a23fb66c".parse()?;
+
+    warn!("{}", transaction_hash.encode_hex());
+    warn!("{}", format!("{:?}", transaction_hash));
+    warn!("{}", FixedH256(transaction_hash));
 
     // 设置全局变量
     let chain_id = w3.get_chainid().await?;
@@ -82,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
         .set(chain_id)
         .unwrap_or_else(|_| panic!("can't set chain_id"));
 
+    info!("{:*^80}", "get chains's txpool");
     let txpool = async {
         let txpool = w3.txpool_content().await?;
         for (addr, txs) in txpool.pending {
@@ -90,15 +96,27 @@ async fn main() -> anyhow::Result<()> {
         }
         Ok::<(), anyhow::Error>(())
     };
+    let _ = txpool.await;
 
+    info!("{:*^80}", "decode_input");
     let decode_data = async {
         let tx = w3.get_transaction(transaction_hash).await?.unwrap();
-        let decode_input = c.decode_input::<Input, Bytes>(tx.input)?;
+        let decode_input = TokenTransferCall::decode(&tx.input)?;
         info!("decode_data {:?}", decode_input);
+        let decode_input2 = Erc20TokenCalls::decode(&tx.input)?;
+        if let Erc20TokenCalls::TokenTransfer(v) = decode_input2 {
+            info!("decode_data2 {:?}", v)
+        };
+        let decode_input3 = c.decode_input::<TokenTransferCall, Bytes>(tx.input.clone())?;
+        info!("decode_data3 {:?}", decode_input3);
+        let decode_input4 = c.decode_input::<Input, Bytes>(tx.input)?;
+        info!("decode_data4 {:?}", decode_input4);
         Ok::<(), anyhow::Error>(())
     };
+    let _ = decode_data.await;
 
-    let read_function = async {
+    info!("{:*^80}", "call function");
+    let call_function = async {
         let aa = c
             .balance_of("0x44ea38b427fce87147dc034caae56f4a46cdfe98".parse::<Address>()?)
             .call()
@@ -106,21 +124,55 @@ async fn main() -> anyhow::Result<()> {
         info!("read_function {:?}", aa);
         Ok::<(), anyhow::Error>(())
     };
+    let _ = call_function.await;
 
-    let construct_topic = async {
-        // let event = Contract::event_of_type::<TokenTransferFilter>(w3.clone());
+    let event_topic2 = async {
         let event: Event<Arc<Provider<Http>>, Provider<Http>, TokenTransferFilter> =
             c.event::<TokenTransferFilter>();
         let topic = event.filter.topics[0].clone().unwrap();
-        let topic = if let Topic::Value(v) = topic { v } else { None };
-        let topic = topic.unwrap();
-        info!("construct_topic {}", FixedH256(topic));
-        topic
+        if let Topic::Value(v) = topic {
+            v
+        } else {
+            None
+        }
     };
 
-    let construct_topic2 = TokenTransferFilter::signature();
-    
-    let logs = async {
+    let event_topic = TokenTransferFilter::signature();
+    let event_name = TokenTransferFilter::name();
+    let event_instance = c.token_transfer_filter();
+    let event_instance2 = c.event::<TokenTransferFilter>();
+    let event_instance3 = Contract::event_of_type::<TokenTransferFilter>(w3.clone());
+    let topic2 = event_topic2.await.unwrap();
+    assert_eq!(topic2, event_topic);
+
+    info!("{:*^80}", "query_all_events");
+    async fn query_events(contract: &Erc20Token<Provider<Http>>) -> Result<(), anyhow::Error> {
+        let start = 594933_u64;
+        let events = contract.events().from_block(start).to_block(start + 2);
+        let logs = events.query_with_meta().await?;
+        for (decoded_log, meta) in logs {
+            if let Erc20TokenEvents::TokenTransferFilter(f) = decoded_log {
+                info!("{f:?}");
+            }
+        }
+        Ok(())
+    }
+    let _ = query_events(&c).await;
+
+    async fn query_specific_events(contract: &Erc20Token<Provider<Http>>) -> Result<(), anyhow::Error> {
+        let start = 594933_u64;
+        let ev: Event<Arc<Provider<Http>>, Provider<Http>, TokenTransferFilter>=contract.event::<TokenTransferFilter>();
+        let events = ev.from_block(start).to_block(start + 2);
+        warn!("{}",events.type_name());
+        let logs = events.query_with_meta().await?;
+        for (decoded_log, meta) in logs {
+                info!("{decoded_log:?}");
+        }
+        Ok(())
+    }
+    let _ = query_specific_events(&c).await;
+
+    let query_events_from_rpc_api = async {
         let start = 594933_u64;
         let filter = Filter::new()
             .address(c.address())
@@ -128,48 +180,38 @@ async fn main() -> anyhow::Result<()> {
             .to_block(start + 2);
         let logs = w3.get_logs(&filter).await?;
         for log in logs {
-            // let d_log = Erc20TokenEvents::decode_log(&RawLog::from(log))?;
-            // info!("{:?}", d_log);
+            let decoded_log = Erc20TokenEvents::decode_log(&RawLog::from(log))?;
+            if let Erc20TokenEvents::TokenTransferFilter(f) = decoded_log {
+                info!("{f:?}");
+            }
         }
         Ok::<(), anyhow::Error>(())
     };
 
-    async fn process_log(topic: H256, log: Log) -> anyhow::Result<()> {
-        let this_topic = log.topics[0];
-        info!("this_topic {:?}", this_topic);
-        if topic == this_topic {
-            let a = parse_log::<TokenTransferFilter>(log)?;
-            info!("parse_log::<TokenTransferFilter> {:?}", a.message);
-        }
-        Ok(())
-    }
-
+    info!(
+        "{:*^80}",
+        "process receipt logs with Erc20TokenEvents::decode_log"
+    );
     let tx_receipt = w3.get_transaction_receipt(transaction_hash).await?.unwrap();
     for log in tx_receipt.logs.iter() {
-        let d_log = Erc20TokenEvents::decode_log(&RawLog::from(log.to_owned()))?;
-        info!("Erc20TokenEvents::decode_log {:?}", d_log);
+        let decoded_log = Erc20TokenEvents::decode_log(&RawLog::from(log.to_owned()))?;
+        if let Erc20TokenEvents::TokenTransferFilter(f) = decoded_log {
+            info!("{f:?}");
+        }
     }
 
-    let topic = construct_topic.await;
-    
-    assert_eq!(topic, construct_topic2);
-    println!("{}", topic);
+    info!(
+        "{:*^80}",
+        "process receipt logs with parse_log::<TokenTransferFilter>"
+    );
     for log in tx_receipt.logs.into_iter() {
-        let _ = process_log(topic, log).await;
+        if event_topic == log.topics[0] {
+            // let decoded_log =
+            //     <TokenTransferFilter as EthLogDecode>::decode_log(&RawLog::from(log.to_owned()))?;
+            let decoded_log: TokenTransferFilter = parse_log::<TokenTransferFilter>(log)?;
+            info!("parse_log::<TokenTransferFilter> {:?}", decoded_log)
+        }
     }
-    info!("******");
-
-    let _ = logs.await;
-    info!("******");
-
-    let _ = txpool.await;
-    info!("******");
-
-    let _ = decode_data.await;
-    info!("******");
-
-    let _ = read_function.await;
-    info!("******");
 
     let _ = all_events_of_contract(&c).await;
     Ok(())
