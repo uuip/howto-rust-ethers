@@ -1,19 +1,21 @@
 #![allow(unused_variables, dead_code)]
 
+use chrono::Local;
+use env_logger::fmt::Color;
+use ethers::abi::{Abi, AbiDecode, AbiEncode, Detokenize, InvalidOutputType, RawLog, Token};
+use ethers::prelude::*;
+use log::{info, warn, LevelFilter};
+use once_cell::sync::{Lazy, OnceCell};
+
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::BufReader;
+use std::io::Write;
 use std::sync::Arc;
 
-use ethers::abi::{Abi, AbiDecode, AbiEncode, Detokenize, InvalidOutputType, RawLog, Token};
-use ethers::prelude::*;
-use log::{debug, info, warn, LevelFilter};
-use once_cell::sync::{Lazy, OnceCell};
-use simplelog::{ColorChoice, ConfigBuilder, TermLogger, TerminalMode};
-
+use crate::erc20::*;
 use crate::setting::Setting;
-use erc20::*;
 
 mod erc20;
 mod setting;
@@ -63,13 +65,23 @@ impl Display for FixedH256 {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    TermLogger::init(
-        LevelFilter::Warn,
-        ConfigBuilder::new().build(),
-        TerminalMode::Mixed,
-        ColorChoice::Auto,
-    )?;
-    let _ = rust_file_generation();
+    env_logger::builder()
+        .filter_level(LevelFilter::Warn)
+        .format(|buf, record| {
+            let mut level_style = buf.style();
+            if record.level() == LevelFilter::Warn {
+                level_style.set_color(Color::Ansi256(206_u8));
+            }
+            writeln!(
+                buf,
+                "[{} | line:{:<4}|{}]: {}",
+                Local::now().format("%H:%M:%S"),
+                record.line().unwrap_or(0),
+                level_style.value(record.level()),
+                level_style.value(record.args())
+            )
+        })
+        .init();
 
     let w3: Arc<Provider<Http>> = Arc::new(Provider::<Http>::try_from(&SETTING.rpc)?);
     let c: Erc20Token<Provider<Http>> =
@@ -127,8 +139,7 @@ async fn main() -> anyhow::Result<()> {
     let _ = call_function.await;
 
     let event_topic2 = async {
-        let event: Event<Arc<Provider<Http>>, Provider<Http>, TokenTransferFilter> =
-            c.event::<TokenTransferFilter>();
+        let event = c.event::<TokenTransferFilter>();
         let topic = event.filter.topics[0].clone().unwrap();
         if let Topic::Value(v) = topic {
             v
@@ -159,14 +170,14 @@ async fn main() -> anyhow::Result<()> {
     }
     let _ = query_events(&c).await;
 
-    async fn query_specific_events(contract: &Erc20Token<Provider<Http>>) -> Result<(), anyhow::Error> {
+    async fn query_specific_events(
+        contract: &Erc20Token<Provider<Http>>,
+    ) -> Result<(), anyhow::Error> {
         let start = 594933_u64;
-        let ev: Event<Arc<Provider<Http>>, Provider<Http>, TokenTransferFilter>=contract.event::<TokenTransferFilter>();
-        let events = ev.from_block(start).to_block(start + 2);
-        warn!("{}",events.type_name());
-        let logs = events.query_with_meta().await?;
+        let events = contract.event::<TokenTransferFilter>().from_block(start).to_block(start + 2);
+        let logs: Vec<(TokenTransferFilter, LogMeta)> = events.query_with_meta().await?;
         for (decoded_log, meta) in logs {
-                info!("{decoded_log:?}");
+            info!("{decoded_log:?}");
         }
         Ok(())
     }
@@ -214,18 +225,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let _ = all_events_of_contract(&c).await;
-    Ok(())
-}
-
-fn rust_file_generation() -> Result<(), Box<dyn std::error::Error>> {
-    let out_file = std::env::temp_dir().join("erc20.rs");
-    debug!("{:#?}", out_file.as_os_str());
-    if out_file.exists() {
-        std::fs::remove_file(&out_file)?;
-    }
-    Abigen::new("Erc20Token", ABI_PATH)?
-        .generate()?
-        .write_to_file(out_file)?;
     Ok(())
 }
 

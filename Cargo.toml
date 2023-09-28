@@ -11,13 +11,16 @@ serde = { version = "1", features = ["derive"] }
 anyhow = "1"
 thiserror = "1"
 log = "0"
-simplelog = "0"
+env_logger = "0.10.0"
 dotenvy = "0"
 once_cell = "1"
-chrono = { version = "0", features = ["serde"] }
-reqwest = { version = "0", features = ["json", "cookies"] }
+chrono = "0"
 
 tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0", features = ["json", "cookies"] }
 futures = "0"
 
+ethers = { version = "2", features = ["legacy"] }
+
+[build-dependencies]
 ethers = { version = "2", features = ["legacy"] }
