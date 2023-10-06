@@ -2,7 +2,7 @@
 
 use chrono::Local;
 use env_logger::fmt::Color;
-use ethers::abi::{Abi, AbiDecode, AbiEncode, Detokenize, InvalidOutputType, RawLog, Token};
+use ethers::abi::{Abi, AbiDecode, Detokenize, InvalidOutputType, RawLog, Token};
 use ethers::prelude::*;
 use log::{info, warn, LevelFilter};
 use once_cell::sync::{Lazy, OnceCell};
@@ -89,7 +89,6 @@ async fn main() -> anyhow::Result<()> {
     let transaction_hash: TxHash =
         "0x079b409e03acb6b2f9985032de5325aaef242336c3eef2f007c32102a23fb66c".parse()?;
 
-    warn!("{}", transaction_hash.encode_hex());
     warn!("{}", format!("{:?}", transaction_hash));
     warn!("{}", FixedH256(transaction_hash));
 
@@ -174,7 +173,10 @@ async fn main() -> anyhow::Result<()> {
         contract: &Erc20Token<Provider<Http>>,
     ) -> Result<(), anyhow::Error> {
         let start = 594933_u64;
-        let events = contract.event::<TokenTransferFilter>().from_block(start).to_block(start + 2);
+        let events = contract
+            .event::<TokenTransferFilter>()
+            .from_block(start)
+            .to_block(start + 2);
         let logs: Vec<(TokenTransferFilter, LogMeta)> = events.query_with_meta().await?;
         for (decoded_log, meta) in logs {
             info!("{decoded_log:?}");
