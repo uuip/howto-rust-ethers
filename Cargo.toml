@@ -24,3 +24,8 @@ ethers = { version = "2.0.10", features = ["legacy"] }
 
 [build-dependencies]
 ethers = { version = "2.0.10", features = ["legacy"] }
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"
