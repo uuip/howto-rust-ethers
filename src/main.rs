@@ -38,15 +38,15 @@ impl Detokenize for Input {
     where
         Self: Sized,
     {
-        let e = Box::new(InvalidOutputType("data error".to_string()));
+        let e = || InvalidOutputType("data error".to_string());
         if let [to, value, data] = &tokens[..] {
-            let to = to.clone().into_address().ok_or(*e.clone())?;
-            let value = value.clone().into_uint().ok_or(*e.clone())?;
-            let somedata = data.clone().into_string().ok_or(*e.clone())?;
-            let c = serde_json::from_str(&somedata).map_err(|_| *e.clone())?;
+            let to = to.clone().into_address().ok_or_else(e)?;
+            let value = value.clone().into_uint().ok_or_else(e)?;
+            let somedata = data.clone().into_string().ok_or_else(e)?;
+            let c = serde_json::from_str(&somedata).map_err(|_| e())?;
             Ok(Self { to, value, data: c })
         } else {
-            Err(*e.clone())
+            Err(e())
         }
     }
 }
