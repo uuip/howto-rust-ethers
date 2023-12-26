@@ -1,18 +1,21 @@
 #![allow(unused_variables, dead_code)]
 
-use chrono::Local;
-use env_logger::fmt::Color;
-use ethers::abi::{Abi, AbiDecode, Detokenize, InvalidOutputType, RawLog, Token};
-use ethers::prelude::*;
-use log::{info, warn, LevelFilter};
-use once_cell::sync::{Lazy, OnceCell};
-
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Write;
+use std::str::FromStr;
 use std::sync::Arc;
+
+use chrono::Local;
+use env_logger::fmt::Color;
+use ethers::abi::{Abi, AbiDecode, AbiEncode, Detokenize, InvalidOutputType, RawLog, Token};
+use ethers::prelude::rand::SeedableRng;
+use ethers::prelude::*;
+use ethers::utils::{hex, parse_checksummed, to_checksum};
+use log::{info, warn, LevelFilter};
+use once_cell::sync::{Lazy, OnceCell};
 
 use crate::erc20::*;
 use crate::setting::Setting;
@@ -66,7 +69,7 @@ impl Display for FixedH256 {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::builder()
-        .filter_level(LevelFilter::Warn)
+        .filter_level(LevelFilter::Info)
         .format(|buf, record| {
             let mut level_style = buf.style();
             if record.level() == LevelFilter::Warn {
@@ -98,6 +101,14 @@ async fn main() -> anyhow::Result<()> {
         .set(chain_id)
         .unwrap_or_else(|_| panic!("can't set chain_id"));
 
+    let mut rng = rand::rngs::StdRng::from_entropy();
+    let mut new_wallet = LocalWallet::new(&mut rng);
+    new_wallet =
+        LocalWallet::from_str("c10fde8c099dd7e3b44a0154bf083180572068f1c2572bbd3985558fe1ff821b")?;
+    let address = to_checksum(&new_wallet.address(), None);
+    let key = hex::encode(new_wallet.signer().to_bytes());
+    info!("address={}, key={}", address, key);
+
     info!("{:*^80}", "get chains's txpool");
     let txpool = async {
         let txpool = w3.txpool_content().await?;
@@ -112,8 +123,6 @@ async fn main() -> anyhow::Result<()> {
     info!("{:*^80}", "decode_input");
     let decode_data = async {
         let tx = w3.get_transaction(transaction_hash).await?.unwrap();
-        let decode_input = TokenTransferCall::decode(&tx.input)?;
-        info!("decode_data {:?}", decode_input);
         let decode_input2 = Erc20TokenCalls::decode(&tx.input)?;
         if let Erc20TokenCalls::TokenTransfer(v) = decode_input2 {
             info!("decode_data2 {:?}", v)
@@ -129,7 +138,10 @@ async fn main() -> anyhow::Result<()> {
     info!("{:*^80}", "call function");
     let call_function = async {
         let aa = c
-            .balance_of("0x44ea38b427fce87147dc034caae56f4a46cdfe98".parse::<Address>()?)
+            .balance_of(parse_checksummed(
+                "0x44ea38b427fce87147dc034caae56f4a46cdfe98",
+                None,
+            )?)
             .call()
             .await?;
         info!("read_function {:?}", aa);
