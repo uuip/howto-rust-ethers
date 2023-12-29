@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 use env_logger::fmt::Color;
-use ethers::abi::{Abi, AbiDecode, AbiEncode, Detokenize, InvalidOutputType, RawLog, Token};
+use ethers::abi::{Abi, AbiDecode, Detokenize, InvalidOutputType, RawLog, Token};
 use ethers::prelude::rand::SeedableRng;
 use ethers::prelude::*;
 use ethers::utils::{hex, parse_checksummed, to_checksum};
@@ -102,8 +102,8 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| panic!("can't set chain_id"));
 
     let mut rng = rand::rngs::StdRng::from_entropy();
-    let mut new_wallet = LocalWallet::new(&mut rng);
-    new_wallet =
+    let new_wallet = LocalWallet::new(&mut rng);
+    let _ =
         LocalWallet::from_str("c10fde8c099dd7e3b44a0154bf083180572068f1c2572bbd3985558fe1ff821b")?;
     let address = to_checksum(&new_wallet.address(), None);
     let key = hex::encode(new_wallet.signer().to_bytes());
