@@ -9,12 +9,12 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use chrono::Local;
-use env_logger::fmt::Color;
+use env_logger::fmt::style::Color;
 use ethers::abi::{Abi, AbiDecode, Detokenize, InvalidOutputType, RawLog, Token};
 use ethers::prelude::rand::SeedableRng;
 use ethers::prelude::*;
 use ethers::utils::{hex, parse_checksummed, to_checksum};
-use log::{info, warn, LevelFilter};
+use log::{info, warn, Level, LevelFilter};
 use once_cell::sync::{Lazy, OnceCell};
 
 use crate::erc20::*;
@@ -69,19 +69,21 @@ impl Display for FixedH256 {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::builder()
-        .filter_level(LevelFilter::Info)
+        .filter_level(LevelFilter::Debug)
         .format(|buf, record| {
-            let mut level_style = buf.style();
-            if record.level() == LevelFilter::Warn {
-                level_style.set_color(Color::Ansi256(206_u8));
+            let mut level_style = buf.default_level_style(record.level());
+            let reset = level_style.render_reset();
+            if record.level() == Level::Warn {
+                level_style = level_style.fg_color(Some(Color::Ansi256(206_u8.into())));
             }
+            let level_style = level_style.render();
             writeln!(
                 buf,
-                "[{} | line:{:<4}|{}]: {}",
+                "{level_style}[{} | line:{:<4}|{}]: {}{reset}",
                 Local::now().format("%H:%M:%S"),
                 record.line().unwrap_or(0),
-                level_style.value(record.level()),
-                level_style.value(record.args())
+                record.level(),
+                record.args()
             )
         })
         .init();
