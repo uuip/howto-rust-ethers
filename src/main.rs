@@ -15,16 +15,15 @@ use ethers::prelude::rand::SeedableRng;
 use ethers::prelude::*;
 use ethers::utils::{hex, parse_checksummed, to_checksum};
 use log::{info, warn, Level, LevelFilter};
-use once_cell::sync::{Lazy, OnceCell};
-
+use std::sync::OnceLock;
 use crate::erc20::*;
 use crate::setting::Setting;
 
 mod erc20;
 mod setting;
 
-static CHAIN_ID: OnceCell<U256> = OnceCell::new();
-static SETTING: Lazy<Setting, fn() -> Setting> = Lazy::new(Setting::init);
+static CHAIN_ID: OnceLock<U256> = OnceLock::new();
+static SETTING: OnceLock<Setting> = OnceLock::new();
 
 const ABI_PATH: &str = "erc20_abi.json";
 // abigen!(Erc20Token, "erc20_abi.json");
@@ -41,15 +40,16 @@ impl Detokenize for Input {
     where
         Self: Sized,
     {
-        let e = || InvalidOutputType("data error".to_string());
-        if let [to, value, data] = &tokens[..] {
-            let to = to.clone().into_address().ok_or_else(e)?;
-            let value = value.clone().into_uint().ok_or_else(e)?;
-            let somedata = data.clone().into_string().ok_or_else(e)?;
-            let c = serde_json::from_str(&somedata).map_err(|_| e())?;
-            Ok(Self { to, value, data: c })
+        let e = InvalidOutputType("data error".to_string());
+        if let [Token::Address(to), Token::Uint(value), Token::String(data)] = &tokens[..] {
+            let c = serde_json::from_str(data).map_err(|_| e.clone())?;
+            Ok(Self {
+                to: *to,
+                value: *value,
+                data: c,
+            })
         } else {
-            Err(e())
+            Err(e)
         }
     }
 }
@@ -68,6 +68,7 @@ impl Display for FixedH256 {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let setting=SETTING.get_or_init(Setting::init);
     env_logger::builder()
         .filter_level(LevelFilter::Debug)
         .format(|buf, record| {
@@ -88,9 +89,9 @@ async fn main() -> anyhow::Result<()> {
         })
         .init();
 
-    let w3: Arc<Provider<Http>> = Arc::new(Provider::<Http>::try_from(&SETTING.rpc)?);
+    let w3: Arc<Provider<Http>> = Arc::new(Provider::<Http>::try_from(&setting.rpc)?);
     let c: Erc20Token<Provider<Http>> =
-        Erc20Token::new(SETTING.token.parse::<Address>()?, w3.clone());
+        Erc20Token::new(setting.token.parse::<Address>()?, w3.clone());
     let transaction_hash: TxHash =
         "0x079b409e03acb6b2f9985032de5325aaef242336c3eef2f007c32102a23fb66c".parse()?;
 
